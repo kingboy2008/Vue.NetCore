@@ -14,9 +14,29 @@ let methods = {
     getCurrentAction() {
         return "--" + (this.currentAction == this.const.ADD ? "新增" : "编辑");
     },
+    quickSearchKeyPress($event) { //查询字段为input时，按回车查询
+        if ($event.keyCode == 13) {
+            if (this.searchFormFileds[this.singleSearch.field] != "") {
+                this.search();
+            }
+        }
+    },
     getButtons() {//生成ViewGrid界面的操作按钮及更多选项
+        let searchIndex = this.buttons.findIndex(x => { return x.value == 'Search'; });
+        //添加高级查询
+        if (searchIndex != -1) {
+            this.buttons.splice(searchIndex + 1, 0, {
+                icon: 'ios-arrow-down',
+                class: 'r-dropdown',
+                name: "",
+                type: this.buttons[searchIndex].type,
+                onClick: () => {
+                    this.searchBoxShow = !this.searchBoxShow;
+                }
+            });
+        }
         if (this.buttons.length <= this.maxBtnLength) return this.buttons;
-        let btns = this.buttons.slice(0, this.maxBtnLength);
+        let btns = this.buttons.slice(0, this.maxBtnLength + (searchIndex == -1 ? 0 : 1));
         btns[this.maxBtnLength - 1].last = true;
         return btns;
     },
@@ -37,10 +57,20 @@ let methods = {
     initBoxButtons() { //初始化ViewGird与弹出框/明细表按钮
         let path = this.$route.path;
         //通过菜单获取用户所对应菜单需要显示的按钮
-        this.buttons.push(... this.permission.getButtons(path));
-
+        let permissionButtons = this.permission.getButtons(path);
+        if (permissionButtons) {
+            this.buttons.push(...permissionButtons);
+        }
+        if (!this.extend) {
+            this.extend = {};
+        }
+        if (!this.extend.buttons) {
+            this.extend.buttons = {};
+        }
         //查询界面扩展按钮(扩展按钮可自行通过设置按钮的Index属性显示到具体位置)
-        this.extendBtn(this.buttons, this.extend.buttons.view);
+        if (this.extend.buttons.view) {
+            this.extendBtn(this.buttons, this.extend.buttons.view);
+        }
 
         //弹出框按钮
         let boxButtons = [];
@@ -48,7 +78,6 @@ let methods = {
         let saveBtn = this.buttons.some(x => {
             if (x.value == this.const.ADD || x.value == this.const.EDIT) return true;
         });
-
 
         //从表表格操作按钮
         let detailGridButtons = {
@@ -198,10 +227,15 @@ let methods = {
         return query;
     },
     search() {//查询
-        let query = this.getSearchParameters();
-        this.$refs.table.load(query, true);
+        // let query = this.getSearchParameters();
+        // this.$refs.table.load(query, true);
+        this.$refs.table.load(null, true);
     },
-    loadTableBefore(param, callBack) {//查询前
+    loadTableBefore(param, callBack) {//查询前设置查询条件及分页信息
+        let query = this.getSearchParameters();
+        if (query) {
+            param = Object.assign(param, query);
+        }
         let status = this.searchBefore(param);
         callBack(status);
     },
@@ -263,6 +297,29 @@ let methods = {
         }
         this.resetForm("form", sourceObj);
     },
+    getKeyValueType(formData) {
+        try {
+            formData.forEach(item => {
+                item.forEach(x => {
+                    let data;
+                    if (x.bind && x.bind.data) {
+                        data = x.bind.data;
+                    } else if (x.data) {
+                        if (x.data instanceof Array) {
+                            data = x.data;
+                        } else if (x.data.data && x.data.data instanceof Array) {
+                            data = x.data.data;
+                        }
+                    }
+                    if (data && data.length > 0 && !this.keyValueType.hasOwnProperty(x.field)) {
+                        this.keyValueType[x.field] = typeof data[0].key;
+                    }
+                })
+            })
+        } catch (error) {
+            console.log(error.message)
+        }
+    },
     resetForm(formName, sourceObj) {
         //重置表单数据
         if (this.$refs[formName]) {
@@ -273,14 +330,25 @@ let methods = {
         let form = formName == "searchForm"
             ? this.searchFormFileds
             : this.editFormFileds;
-
+        //获取数据源的data类型，否则如果数据源data的key是数字，重置的值是字符串就无法绑定值
+        if (!this.keyValueType._dinit) {
+            this.getKeyValueType(this.searchFormOptions);
+            this.getKeyValueType(this.editFormOptions);
+            this.keyValueType._dinit = true;
+        }
         for (const key in form) {
             if (sourceObj.hasOwnProperty(key)) {
                 let newVal = sourceObj[key];
-                //this.hasKeyField.indexOf(key) != -1默认所有字典项的key都需要设置为字符串，不是数字
-                form[key] = this.hasKeyField.indexOf(key) != -1
-                    ? (newVal + "")
-                    : newVal;
+                if (this.keyValueType[key] == 'number' && newVal * 1 == newVal) {
+                    newVal = newVal * 1;
+                } else {
+                    if (newVal == null || newVal == undefined) {
+                        newVal = '';
+                    } else {
+                        newVal += "";
+                    }
+                }
+                form[key] = newVal;
             } else {
                 form[key] = form[key] instanceof Array ? [] : "";
             }
@@ -331,32 +399,35 @@ let methods = {
                 if (!this.updateAfter(x)) return;
             }
             if (!x.status) return this.$Message.error(x.message);
-            // //保存后拦截
-            // if (!this.saveAfter(formData, x)) return;
             this.$Message.info(x.message);
-
-            x.data = typeof x.data == "string" && x.data != ""
-                ? JSON.parse(x.data).data
-                : x.data.data
-            let resultRow = x.data;
+            //如果保存成功后需要关闭编辑框，直接返回不处理后面
+            if (this.boxOptions.saveClose) {
+                this.boxModel = false;
+                this.refresh();
+                return;
+            }
+            let resultRow;
+            if (typeof x.data == "string" && x.data != "") {
+                resultRow = JSON.parse(x.data);
+            } else {
+                resultRow = x.data;
+            }
 
             if (this.currentAction == this.const.ADD) {
                 //  this.currentRow=x.data;
                 this.editFormFileds[this.table.key] = "";
                 this.currentAction = this.const.EDIT;
                 this.currentRow = resultRow.data;
-                // if (this.hasDetail) {
-                //     this.$refs.detail.rowData=resultRow.list;
-                // }
             }
-            this.resetEditForm(resultRow);
+            this.resetEditForm(resultRow.data);
+            // console.log(resultRow);
             //重置数据,待测试
             if (this.hasDetail) {
                 this.detailOptions.delKeys = [];
-                this.boxModel = false;
-                //  this.$refs.detail.rowData.push(...resultRow.list);
+                if (resultRow.list) {
+                    this.$refs.detail.rowData.push(...resultRow.list)
+                }
             }
-
             this.refresh();
         });
     },
@@ -421,7 +492,7 @@ let methods = {
     },
     add() {//新建
         this.currentAction = this.const.ADD;
-        this.currentRow=null;
+        this.currentRow = null;
         this.initBox();
         if (this.hasDetail) {
             this.$refs.detail &&
@@ -433,7 +504,7 @@ let methods = {
         this.boxModel = true;
         //点击新建按钮弹出框后，可以在此处写逻辑，如，从后台获取数据
         this.modelOpenProcess();
-       // this.modelOpenAfter();
+        // this.modelOpenAfter();
     },
     edit() {//编辑
         let rows = this.$refs.table.getSelected();
@@ -451,13 +522,13 @@ let methods = {
         this.setEditForm(rows[0]);
         //点击编辑按钮弹出框后，可以在此处写逻辑，如，从后台获取数据
         this.modelOpenProcess(rows[0]);
-       // this.modelOpenAfter(rows[0]);
+        // this.modelOpenAfter(rows[0]);
     },
     modelOpenProcess(row) {
         if (!this.$refs.form) {
             let timeOut = setTimeout(x => {
                 this.modelOpenAfter(row);
-            }, 300)
+            }, 500)
             return;
         }
         this.modelOpenAfter(row);
@@ -582,7 +653,7 @@ let methods = {
     viewModelCancel() {//查看表结构
         this.viewModel = false;
     },
-    initFormOptions(formOptions, keys) {//初始化查询、编辑对象的下拉框数据源
+    initFormOptions(formOptions, keys, setMinVal) {//初始化查询、编辑对象的下拉框数据源
         //let defaultOption = { key: "", value: "请选择" };
         formOptions.forEach(item => {
             item.forEach(d => {
@@ -651,10 +722,10 @@ let methods = {
     },
     initDicKeys() { //初始化字典数据
         let keys = [];
-        //初始化编辑数据源,默认为一个空数组
-        this.initFormOptions(this.editFormOptions, keys);
+        //初始化编辑数据源,默认为一个空数组，如果要求必填设置type=number/decimal的最小值
+        this.initFormOptions(this.editFormOptions, keys, true);
         //初始化查询数据源,默认为一个空数组
-        this.initFormOptions(this.searchFormOptions, keys);
+        this.initFormOptions(this.searchFormOptions, keys, false);
         //查询日期设置为可选开始与结果日期
         this.searchFormOptions.forEach(item => {
             item.forEach(x => {
@@ -685,11 +756,44 @@ let methods = {
             $internalVue.bindOptions(dic);
         });
     },
+    setFiexdColumn(columns, containerWidth) { //计算整个table的宽度，根据宽度决定是否启用第一行显示的列为固定列
+        let columnsWidth = 0;
+        columns.forEach(x => {
+            if (!x.hidden && x.width) {
+                columnsWidth += x.width;
+            }
+        })
+        //启用第一列为固定列
+        if (columnsWidth > containerWidth) {
+            let firstColumn = columns.find(x => !x.hidden);
+            if (firstColumn) {
+                firstColumn.fixed = true;
+            }
+        }
+    },
     initBoxHeightWidth() { //初始化弹出框的高度与宽度
         let clientHeight = document.documentElement.clientHeight;
-        clientHeight = clientHeight < 450 ? 450 : clientHeight;
+        //弹出框高度至少250px
+        clientHeight = clientHeight < 250 ? 250 : clientHeight;
         let clientWidth = document.documentElement.clientWidth;
-        this.height = clientHeight - 210;
+
+        if (this.boxOptions.height) {
+            //如果高度与宽度超过了获取到的可见高宽度，则设为默认的90%高宽
+            if (this.boxOptions.height > clientHeight * 0.8) {
+                this.boxOptions.height = clientHeight * 0.8
+            }
+        }
+        if (this.boxOptions.width) {
+            //如果高度与宽度超过了获取到的可见高宽度，则设为默认的90%高宽
+            if (this.boxOptions.height > clientWidth * 0.8) {
+                this.boxOptions.width = clientWidth * 0.8
+            }
+        }
+        //计算整个table的宽度，根据宽度决定是否启用第一行显示的列为固定列
+        let maxTableWidth = clientWidth - 270;
+        this.setFiexdColumn(this.columns, maxTableWidth);
+
+        this.height = this.tableHeight || clientHeight - 210;
         this.url = this.getUrl(this.const.PAGE);
         //计算弹出框的高与宽度
         //如果有明细表，高度与宽带设置为0.9/0.82
@@ -697,32 +801,39 @@ let methods = {
             this.hasDetail = true;
             clientWidth = clientWidth * 0.8;
             clientHeight = clientHeight * 0.82;
-            this.detailOptions.height =
-                clientHeight - this.editFormOptions.length * 57 - 205;
-            this.detailOptions.height = this.detailOptions.height < 240 ? 240 : this.detailOptions.height;
+            if (!this.detailOptions.height) {
+                this.detailOptions.height =
+                    clientHeight - this.editFormOptions.length * 57 - 205;
+                this.detailOptions.height = this.detailOptions.height < 240 ? 240 : this.detailOptions.height;
+            }
+
             this.detailOptions.columns = this.detail.columns;
             this.detailOptions.pagination.sortName = this.detail.sortName;
             this.detailOptions.cnName = this.detail.cnName;
             this.detailOptions.key = this.detail.key;
             this.detailOptions.url = this.getUrl("getDetailPage");
+            //计算弹出框整个table的宽度，根据宽度决定是否启用第一行显示的列为固定列
+            this.setFiexdColumn(this.detail.columns, clientWidth);
         } else {
             let maxColumns = 1; //最大列数，根据列计算弹框的宽度
             this.editFormOptions.forEach(x => {
                 if (x.length > maxColumns) maxColumns = x.length;
             });
-            if (maxColumns == 1) {
-                clientWidth = clientWidth * 0.5;
-                clientHeight = clientHeight * 0.7;
-            } else {
-                clientWidth = clientWidth * (maxColumns / 10 + 0.3);
-                let maxHeight = this.editFormOptions.length * 0.1;
-                clientHeight =
-                    clientHeight *
-                    (maxHeight > 0.9 || maxHeight < 0.45 ? 0.5 : maxHeight);
-            }
+            let maxHeightRate = 0.7, maxWidthRate = 0.5;
+            maxWidthRate = maxColumns / 10 + 0.3;
+            maxHeightRate = (this.editFormOptions.length || 1) * 0.1 + 0.03;
+            maxHeightRate = maxHeightRate > 0.9 ? 0.9 : maxHeightRate;
+            clientWidth = clientWidth * maxWidthRate;
+            clientHeight = clientHeight * maxHeightRate;
+            // this.boxOptions.width = clientWidth * maxWidthRate;
+            // this.boxOptions.height = clientHeight * maxHeightRate;
         }
-
-        this.boxOptions = { height: this.boxOptions.height || clientHeight, width: this.boxOptions.width || clientWidth };
+        if (clientHeight) {
+            this.boxOptions.height = clientHeight;
+        }
+        if (clientWidth) {
+            this.boxOptions.width = clientWidth;
+        }
     }
 };
 //合并扩展方法

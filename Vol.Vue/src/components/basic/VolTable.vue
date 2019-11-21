@@ -10,7 +10,8 @@
         class="v-table"
         @sort-change="sortChange"
         tooltip-effect="dark"
-        :height="height"
+        :height="realHeight"
+        :max-height="realMaxHeight"
         :data="url?rowData:tableData"
         border
         :row-class-name="initIndex"
@@ -144,7 +145,11 @@ export default {
     },
     height: {
       type: Number,
-      default: 300
+      default: 0
+    },
+    maxHeight: {
+      type: Number,
+      default: 0
     },
     linkView: {
       type: Function,
@@ -184,11 +189,18 @@ export default {
       //传入了url，是否默认加载表格数据
       type: Boolean,
       default: true
+    },
+    loadKey: {
+      //是否自动从后台加载数据源,如【审核状态】字段是的值是数字，但要显示对应的文字，1=审核中，2=审核通过
+      type: Boolean,
+      default: false
     }
   },
   data() {
     return {
       key: "",
+      realHeight:0,
+      realMaxHeight:0,
       enableEdit: false, //是否启表格用编辑功能
       empty: this.allowEmpty ? "" : "--",
       defaultImg: 'this.src="' + require("@/assets/imgs/error.png") + '"',
@@ -231,6 +243,31 @@ export default {
     };
   },
   created() {
+    this.realHeight=this.getHeight();
+    this.realMaxHeight=this.getMaxHeight();
+    if (this.loadKey) {
+      //从后台加下拉框的[是否启用的]数据源
+      let keys = [];
+      let columnBind = [];
+      this.columns.forEach(x => {
+        if (x.bind && x.bind.key && (!x.bind.data || x.bind.data.length == 0)) {
+          keys.push(x.bind.key);
+          if (!x.bind.data) x.bind.data = [];
+          columnBind.push(x.bind);
+        }
+      });
+      if (keys.length == 0) return;
+      this.http.post("/api/Sys_Dictionary/GetVueDictionary", keys).then(dic => {
+        dic.forEach(x => {
+          columnBind.forEach(c => {
+            if (c.key == x.dicNo) {
+              c.data.push(...x.data);
+            }
+          });
+        });
+      });
+    }
+
     this.paginations.sort = this.pagination.sortName;
     this.enableEdit = this.columns.some(x => {
       return x.hasOwnProperty("edit");
@@ -247,6 +284,30 @@ export default {
     this.defaultLoadPage && this.load();
   },
   methods: {
+    getHeight() {
+      //没有定义高度与最大高度，使用table默认值
+      if (!this.height && !this.maxHeight) {
+        return null;
+      }
+      //定义了最大高度则不使用高度
+      if (this.maxHeight) {
+        return null;
+      }
+      //使用当前定义的高度
+      return this.height;
+    },
+    getMaxHeight() {
+      //没有定义高度与最大高度，使用table默认值
+      if (!this.height && !this.maxHeight) {
+        return null;
+      }
+      //定义了最大高度使用最大高度
+      if (this.maxHeight) {
+        return this.maxHeight;
+      }
+      //不使用最大高度
+      return null;
+    },
     getSelectedOptions(column) {
       if (column.bind && column.bind.data && column.bind.data.length > 0) {
         return column.bind.data;
@@ -295,7 +356,9 @@ export default {
       let data = this.url ? this.rowData : this.tableData;
       let indexArr = this.getSelectedIndex();
       if (indexArr.length == 0) {
-        return this.$message.error("删除操作必须设置VolTable的属性index='true'")
+        return this.$message.error(
+          "删除操作必须设置VolTable的属性index='true'"
+        );
       }
       // if (indexArr.length == 0 || !this.key) {
       //   return this.$message.error(
@@ -342,7 +405,8 @@ export default {
       });
       return indexArr ? indexArr : [];
     },
-    load(query,isResetPage) {//isResetPage重置分页数据
+    load(query, isResetPage) {
+      //isResetPage重置分页数据
       if (!this.url) return;
       if (isResetPage) {
         this.resetPage();
@@ -402,9 +466,10 @@ export default {
       this.paginations.order = sort.order == "ascending" ? "asc" : "desc";
       this.load();
     },
-    resetPage(){  //重置查询分页
-      this.paginations.rows=30;
-      this.paginations.page=1;
+    resetPage() {
+      //重置查询分页
+      this.paginations.rows = 30;
+      this.paginations.page = 1;
     },
     handleSelectionChange(row) {
       this.$refs.table.toggleRowSelection(row);
@@ -415,7 +480,12 @@ export default {
       // if (val == "" || val == null || val == undefined) {
       //  return "none";
       // }
-
+      if (column.getColor && typeof column.getColor == "function") {
+        let _color = column.getColor(row, column);
+        if (_color) {
+          return _color;
+        }
+      }
       if (!val && val != "0") {
         return this.defaultColor;
       }

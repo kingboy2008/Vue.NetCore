@@ -48,25 +48,20 @@
             v-if="singleSearch"
             :singleSearch="singleSearch"
             :searchFormFileds="searchFormFileds"
+            :tiggerPress="quickSearchKeyPress"
           ></QuickSearch>
         </div>
         <!--操作按钮组-->
         <div class="btn-group">
           <Button
-            v-for="(btn,bIndex) in getButtons()"
+            v-for="(btn,bIndex) in splitButtons"
             :key="bIndex"
             :type="btn.type"
-            :class="btn.value=='Search'?'dropdown':''"
+            :class="btn.class"
             @click="onClick(btn.onClick)"
           >
             <Icon :type="btn.icon" />
             {{btn.name}}
-            <Icon
-              v-if="btn.value=='Search'"
-              @click="searchBoxShow=!searchBoxShow"
-              @click.stop
-              type="ios-arrow-down"
-            ></Icon>
           </Button>
           <Dropdown trigger="click" @on-click="changeDropdown" v-if="buttons.length> maxBtnLength">
             <Button type="info" ghost>
@@ -85,9 +80,15 @@
             </DropdownMenu>
           </Dropdown>
         </div>
+
         <!--查询条件-->
         <div class="search-box" v-show="searchBoxShow">
-          <vol-form ref="searchForm" :formRules="searchFormOptions" :formFileds="searchFormFileds">
+          <vol-form
+            ref="searchForm"
+            :label-width="labelWidth"
+            :formRules="searchFormOptions"
+            :formFileds="searchFormFileds"
+          >
             <div class="form-closex" slot="footer">
               <Button size="small" type="info" ghost @click="search">
                 <Icon type="md-search" />查询
@@ -102,6 +103,35 @@
             </div>
           </vol-form>
         </div>
+        <!-- <Dropdown trigger="click" @on-click="changeDropdown" v-if="buttons.length> maxBtnLength">
+          <Button type="info" ghost>
+            更多
+            <Icon type="ios-arrow-down"></Icon>
+          </Button>
+          <DropdownMenu slot="list">
+            <div class="search-box">
+              <vol-form
+                ref="searchForm"
+                :label-width="labelWidth"
+                :formRules="searchFormOptions"
+                :formFileds="searchFormFileds"
+              >
+                <div class="form-closex" slot="footer">
+                  <Button size="small" type="info" ghost @click="search">
+                    <Icon type="md-search" />查询
+                  </Button>
+               
+                  <Button size="small" type="success" ghost @click="resetSearch">
+                    <Icon type="md-refresh" />重置
+                  </Button>
+                  <Button size="small" type="warning" ghost @click="searchBoxShow=!searchBoxShow">
+                    <Icon type="md-power" />关闭
+                  </Button>
+                </div>
+              </vol-form>
+            </div>
+          </DropdownMenu>
+        </Dropdown>-->
         <!-- 新建、编辑、查看表单 -->
         <vol-box
           v-if="boxInit"
@@ -109,20 +139,28 @@
           :title="table.cnName+(getCurrentAction())"
           :width="boxOptions.width"
           :height="boxOptions.height"
+          :padding="0"
         >
           <!--明细头部自定义组件-->
           <div class="iview-com" slot="content">
-            <modelHeader ref="modelHeader" @parentCall="parentCall"></modelHeader>
-            <div class="form-text v-text">
-              <span class="title">
-                <Icon type="ios-create-outline" />
-                {{table.cnName}}
-              </span>
+            <modelHeader ref="modelHeader" class="model-header" @parentCall="parentCall"></modelHeader>
+            <div class="item form-item">
+              <div class="form-text v-text">
+                <span class="title">
+                  <Icon type="ios-create-outline" />
+                  {{table.cnName}}
+                </span>
+              </div>
+              <vol-form
+                ref="form"
+                :label-width="boxOptions.labelWidth"
+                :formRules="editFormOptions"
+                :formFileds="editFormFileds"
+              ></vol-form>
             </div>
-            <vol-form ref="form" :formRules="editFormOptions" :formFileds="editFormFileds"></vol-form>
             <!--明细body自定义组件-->
-            <modelBody ref="modelBody" @parentCall="parentCall"></modelBody>
-            <div v-if="detail.columns&&detail.columns.length>0" class="grid-detail">
+            <modelBody class="model-body" ref="modelBody" @parentCall="parentCall"></modelBody>
+            <div v-if="detail.columns&&detail.columns.length>0" class="grid-detail table-item item">
               <div class="toolbar">
                 <div class="title form-text">
                   <span>
@@ -155,9 +193,10 @@
                 :height="detailOptions.height"
               ></vol-table>
             </div>
+            <!--明细footer自定义组件-->
+            <modelFooter ref="modelFooter" class="model-footer" @parentCall="parentCall"></modelFooter>
           </div>
-          <!--明细footer自定义组件-->
-          <modelFooter ref="modelFooter" @parentCall="parentCall"></modelFooter>
+
           <div slot="footer">
             <Button
               v-for="(btn,bIndex) in boxButtons"
@@ -189,6 +228,7 @@
           :columns="columns"
           :pagination="pagination"
           :height="height"
+          :max-height="tableMaxHeight"
           :url="url"
         ></vol-table>
       </div>
@@ -222,7 +262,7 @@ const comName = [
   "modelFooter"
 ];
 import Empty from "@/components/basic/Empty.vue";
-var $viewGridVue;
+var $viewGridVue, $this;
 let _components = {
   gridHeader: Empty,
   gridBody: Empty,
@@ -243,6 +283,7 @@ let _components = {
   modelBody: Empty,
   modelFooter: Empty
 };
+import VolTable from "@/components/basic/VolTable.vue";
 var vueParam = {
   components: {
     //表单header、content、footer对应位置扩充的组件
@@ -257,7 +298,7 @@ var vueParam = {
     ..._components,
     VolForm: () => import("@/components/basic/VolForm.vue"),
     VolBoxForm: () => import("@/components/basic/VolBoxForm.vue"),
-    VolTable: () => import("@/components/basic/VolTable.vue"),
+    VolTable: VolTable, //() => import("@/components/basic/VolTable.vue"),
     VolBox: () => import("@/components/basic/VolBox.vue"),
     QuickSearch: () => import("@/components/basic/QuickSearch.vue"),
     Audit: () => import("@/components/basic/Audit.vue"),
@@ -273,19 +314,21 @@ var vueParam = {
       singleSearch: "", //快速查询字段
       exportHref: "",
       currentAction: _const.ADD, //当新建或编辑时，记录当前的状态:如当前操作是新建
-      currentRow:null,//当前编辑或查看数据的行
-      hasKeyField: {}, //当前操作的行数据(新建、编辑、查看)
+      currentRow: null, //当前编辑或查看数据的行
       closable: false,
       boxModel: false, //弹出新建、编辑框
-      width: 700,
+      width: 700, //弹出框查看表数据结构
+      labelWidth: 100, //高级查询的标签宽度
       viewModel: false, //查看表结构的弹出框
       viewColumns: [], //查看表结构的列数据
       viewData: [], //查看表结构信息
       maxBtnLength: 3, //界面按钮最多显示的个数，超过的数量都显示在更多中
       buttons: [], //查询界面按钮  如需要其他操作按钮，可在表对应的.js中添加(如:Sys_User.js中buttons添加其他按钮)
+      splitButtons: [],
       boxButtons: [], //弹出框按钮 如需要其他操作按钮，可在表对应的.js中添加
       dicKeys: [], //当前界面所有的下拉框字典编号
       hasKeyField: [], //有字典数据源的字段
+      keyValueType:{_dinit:false},
       url: "", //界面表查询的数据源的url
       hasDetail: false, //是否有从表(明细)表格数据
       initActivated: false,
@@ -302,7 +345,7 @@ var vueParam = {
         delKeys: [], //当编辑时删除当前明细的行主键值
         url: "", //从表加载数据的url
         pagination: { total: 0, size: 100, sortName: "" }, //从表分页配置数据
-        height: 250 //默认从表高度
+        height: 0 //默认从表高度
       },
       auditParam: {
         //审核对象
@@ -325,12 +368,14 @@ var vueParam = {
         init: false //是否有导入权限，有才渲染导入组件
       },
       height: 0, //表高度
-
+      tableHeight: 0, //查询页面table的高度
+      tableMaxHeight:0,//查询页面table的最大高度
       pagination: { total: 0, size: 30, sortName: "" }, //从分页配置数据
-      boxOptions: { height: 0, width: 0 }
+      boxOptions: { saveClose: true, labelWidth: 100, height: 0, width: 0 } //saveClose新建或编辑成功后是否关闭弹出框//弹出框的标签宽度labelWidth
     };
   },
-  methods: {//方法已放到ViewGridConfig文件夹下，加载时会合并ViewGridConfig下的方法到methods中
+  methods: {
+    //方法已放到ViewGridConfig文件夹下，加载时会合并ViewGridConfig下的方法到methods中
     mergeComponents() {
       if (this.extend.components) {
         for (const key in this.extend.components) {
@@ -342,7 +387,7 @@ var vueParam = {
         }
       }
     }
-  }, 
+  },
   activated() {
     if (!this._inited) {
       this._inited = true;
@@ -357,11 +402,11 @@ var vueParam = {
   mounted() {
     this.mounted();
   },
-  beforeCreate() {
-  },
+  beforeCreate() {},
   created: function() {
-    //在其他方法中如果拿不到this，请使用$viewGridVue
+    //在其他方法中如果拿不到this，请使用$viewGridVue或$this
     $viewGridVue = this;
+    $this = this;
     //合并扩展组件
     this.mergeComponents();
     //合并自定义业务扩展方法
@@ -380,6 +425,7 @@ var vueParam = {
     this.initDicKeys(); //初始下框数据源
 
     this.onInited(); //初始化后，如果需要做其他处理在扩展方法中覆盖此方法
+    this.splitButtons = this.getButtons();
   },
   beforeUpdate: function() {},
   updated: function() {}
@@ -415,5 +461,11 @@ import "@/assets/css/ViewGrid.less";
   width: 130px;
   border-radius: 5px;
   border: 1px solid #e7e5e5;
+}
+.vertical-center-modal >>> .srcoll-content {
+  padding: 0;
+}
+.view-model-content {
+  background: #eee;
 }
 </style>

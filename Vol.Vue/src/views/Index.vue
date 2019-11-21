@@ -57,12 +57,13 @@
       </div>
       <div class="vol-main" id="vol-main">
         <el-scrollbar style="height:100%;">
-          <!-- <transition name="fade" mode="in-out"> -->
-          <!-- <transition > -->
+          <!-- <transition name="fade" mode="in-out">  -->
+          <transition  enter-active-class="animated fadeInLeftBig">
+            
           <keep-alive>
             <router-view></router-view>
           </keep-alive>
-          <!-- </transition> -->
+           </transition>
         </el-scrollbar>
       </div>
     </div>
@@ -118,8 +119,16 @@ export default {
       type: "get",
       async: false
     });
+
     //当前刷新是不是首页
     if (this.$route.path != this.navigation[0].path) {
+      let linkNow = this.links.find(x => {
+        return x.path == this.$route.path;
+      });
+      if (linkNow) {
+        this.selectId = linkNow.id;
+        return;
+      }
       let item = this.menuOptions.find(x => {
         return x.path == this.$route.path;
       });
@@ -350,7 +359,7 @@ body {
   width: 100%;
   position: relative;
   /* line-height: 60px; */
-  background-color: #03535e;
+  background-color:#272929;
 }
 .vol-main {
   position: absolute;
@@ -420,6 +429,8 @@ body {
   cursor: pointer;
 }
 .header-navigation {
+      box-shadow: 0px 0px 4px #888888;
+      border-bottom: 1px solid #eee;
   height: 32px;
   overflow: hidden;
   line-height: 32px;
@@ -462,7 +473,7 @@ body {
 .vol-header .user span:first-child {
   font-size: 15px;
   font-weight: bolder;
-  letter-spacing: 3px;
+  /* letter-spacing: 3px; */
 }
 
 .h-link ul {
@@ -523,5 +534,39 @@ img:not([src]) {
 .ivu-select-dropdown::-webkit-scrollbar-thumb {
   border-radius: 5px;
   background: #dadac9;
+}
+ .animated {
+    -webkit-animation-duration:1s;
+    animation-duration:1s;
+    -webkit-animation-fill-mode:both;
+    animation-fill-mode:both
+}
+@-webkit-keyframes fadeInLeftBig {
+    0% {
+        opacity:0;
+        -webkit-transform:translate3d(-50px, 0, 0);
+        transform:translate3d(-50px, 0, 0)
+    }
+    to {
+        opacity:1;
+        -webkit-transform:none;
+        transform:none
+    }
+}
+@keyframes fadeInLeftBig {
+    0% {
+        opacity:0;
+        -webkit-transform:translate3d(-50px, 0, 0);
+        transform:translate3d(-50px, 0, 0)
+    }
+    to {
+        opacity:1;
+        -webkit-transform:none;
+        transform:none
+    }
+}
+.fadeInLeftBig {
+    -webkit-animation-name:fadeInLeftBig;
+    animation-name:fadeInLeftBig
 }
 </style>

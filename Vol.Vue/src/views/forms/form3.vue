@@ -1,6 +1,6 @@
 <template>
   <div class="container" style="padding: 30px 100px;">
-    <Divider>多列表单</Divider>
+    <Divider>多列表单(邮箱、手机号码验证、自定义验证方法)</Divider>
     <VolForm ref="myform" :loadKey="loadKey" :formFileds="formFileds" :formRules="formRules"></VolForm>
     <slot></slot>
     <div v-if="showBtn">
@@ -27,7 +27,7 @@ export default {
       //重置表单，重置时可指定重置的值，如果没有指定重置的值，默认全部清空
       let data = { Variety: "1", AvgPrice: 888 };
       this.$refs.myform.reset(data);
-      this.$message.error("表单已重置"); 
+      this.$message.error("表单已重置");
     }
   },
   data() {
@@ -44,23 +44,24 @@ export default {
         Address: "",
         Source: [],
         Remark: "",
+        phone: "",
+        email: "",
+        userVali: "",
         img: ""
       },
       formRules: [
         //两列的表单，formRules数据格式为:[[{},{}]]
         [
           {
-            columnType: "string",
             dataKey: "age", //后台下拉框对应的数据字典编号
             data: [], //loadKey设置为true,会根据dataKey从后台的下拉框数据源中自动加载数据
             title: "月龄",
-            filter:true,
+            filter: true,
             required: true, //设置为必选项
             field: "AgeRange",
             type: "select"
           },
           {
-            columnType: "string",
             title: "品种",
             dataKey: "pz",
             //如果这里绑定了data数据，后台不会加载此数据源
@@ -70,7 +71,6 @@ export default {
             type: "select"
           },
           {
-            columnType: "string",
             dataKey: "city",
             title: "城市",
             required: true,
@@ -81,39 +81,36 @@ export default {
         ],
         [
           {
-            columnType: "decimal",
+            type: "decimal",
             title: "成交均价",
             required: true,
-            placeholder:"你可以自己定义placeholder显示的文字",
+            placeholder: "你可以自己定义placeholder显示的文字",
             field: "AvgPrice"
           },
           {
-            columnType: "datetime",
             title: "日期",
             required: true,
             field: "Date",
-            placeholder:"你可以设置colSize属性决定标签的长度，可选值12/8/6/4",
+            placeholder: "你可以设置colSize属性决定标签的长度，可选值12/8/6/4",
             colSize: 8, //设置宽度为2/3
-            type: "datetime"
+            type: "date"
           }
         ],
         [
           {
-            columnType: "datetime",
             title: "开始结束日期",
             range: true, //设置为true可以选择开始与结束日期
-            required: false,
+            required: true,
             field: "DateRange",
             type: "date"
           },
           {
-            columnType: "string",
+            type: "text",
             title: "地址",
-            required: true,
+            required: false,
             field: "Address"
           },
           {
-            columnType: "int",
             dataKey: "top",
             title: "是否",
             required: true,
@@ -124,21 +121,46 @@ export default {
         ],
         [
           {
-            columnType: "string",
+            title: "手机号",
+            required: true,
+            field: "phoneNo",
+            type: "phone"
+          },
+          {
+            title: "邮箱",
+            required: true,
+            field: "email",
+            type: "mail"
+          },
+          {
+            title: "自定义验证",
+            required: true,
+            field: "userVali",
+            placeholder: "自定义验证方法验证输入值",
+            type: "text",
+            validator: (rule, val) => {
+              if (val != "123") {
+                return "自定设置必须输入123";
+              }
+              return "";
+            }
+          }
+        ],
+        [
+          {
             title: "备注",
             required: true,
             field: "Remark",
-             placeholder:"你可以设置colSize属性决定标签的长度，可选值12/8/6/4",
+            placeholder: "你可以设置colSize属性决定标签的长度，可选值12/8/6/4",
             min: 1,
             max: 3,
             type: "textarea",
             colSize: 12 //设置宽度100%
           },
           {
-            columnType: "string",
             dataKey: "pz",
             title: "来源",
-            // required: true,
+            required: true,
             data: [],
             min: 2,
             max: 4,
@@ -149,7 +171,6 @@ export default {
         ],
         [
           {
-            columnType: "img",
             title: "图片",
             required: true,
             field: "img",
